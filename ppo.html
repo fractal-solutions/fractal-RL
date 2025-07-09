@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPO CartPole GUI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+            background-color: #f0f0f0;
+        }
+        #app-container {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        #main-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #config-section {
+            width: 350px; /* Adjust as needed */
+        }
+        canvas {
+            border: 2px solid #333;
+            background-color: #fff;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .info-box {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            width: 600px;
+            height: 150px;
+            overflow-y: scroll;
+            background-color: #fff;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .config-panel {
+            padding: 15px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            width: 100%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-sizing: border-box; /* Include padding and border in the element's total width and height */
+        }
+        .config-panel h2 {
+            margin-top: 0;
+            color: #333;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .config-grid div {
+            display: flex;
+            flex-direction: column;
+        }
+        .config-grid label {
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .config-grid input[type="number"],
+        .config-grid select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .config-grid input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            -webkit-transition: .2s;
+            transition: opacity .2s;
+            border-radius: 5px;
+        }
+        .config-grid input[type="range"]:hover {
+            opacity: 1;
+        }
+        .config-grid input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        }
+        .config-grid input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        }
+        .slider-value {
+            font-size: 0.9em;
+            color: #666;
+            text-align: right;
+            margin-top: 5px;
+        }
+        .config-panel button {
+            display: block;
+            width: 100%;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .config-panel button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>PPO CartPole Trainer</h1>
+    <div id="app-container">
+        <div id="main-section">
+            <canvas id="cartPoleCanvas" width="600" height="400"></canvas>
+            <div class="controls">
+                <button id="startButton">Start Training</button>
+                <button id="stopButton" disabled>Stop Training</button>
+                <button id="evaluateButton" disabled>Evaluate Agent</button>
+                <button id="resetButton">Reset Agent</button>
+            </div>
+            <div class="info-box" id="infoBox"></div>
+        </div>
+
+        <div id="config-section">
+            <div class="config-panel">
+                <h2>Model Configuration</h2>
+                <div class="config-grid">
+                    <div><label for="learningRateActor">Actor Learning Rate:</label><input type="range" id="learningRateActor" min="0.00001" max="0.001" step="0.00001"><span class="slider-value" id="learningRateActorValue"></span></div>
+                    <div><label for="learningRateCritic">Critic Learning Rate:</label><input type="range" id="learningRateCritic" min="0.000001" max="0.001" step="0.00001"><span class="slider-value" id="learningRateCriticValue"></span></div>
+                    <div><label for="gamma">Gamma (Discount):</label><input type="range" id="gamma" min="0.9" max="0.999" step="0.001"><span class="slider-value" id="gammaValue"></span></div>
+                    <div><label for="lambda">Lambda (GAE):</label><input type="range" id="lambda" min="0.9" max="0.999" step="0.001"><span class="slider-value" id="lambdaValue"></span></div>
+                    <div><label for="epsilon">Epsilon (Clip):</label><input type="range" id="epsilon" min="0.01" max="0.5" step="0.01"><span class="slider-value" id="epsilonValue"></span></div>
+                    <div><label for="ppoEpochs">PPO Epochs:</label><input type="range" id="ppoEpochs" min="1" max="100" step="1"><span class="slider-value" id="ppoEpochsValue"></span></div>
+                    <div><label for="miniBatchSize">Mini Batch Size:</label><input type="range" id="miniBatchSize" min="16" max="256" step="16"><span class="slider-value" id="miniBatchSizeValue"></span></div>
+                    <div><label for="dropoutRate">Dropout Rate:</label><input type="range" id="dropoutRate" min="0.0" max="0.5" step="0.01"><span class="slider-value" id="dropoutRateValue"></span></div>
+                    <div><label for="l2RegularizationRate">L2 Reg. Rate:</label><input type="range" id="l2RegularizationRate" min="0.000001" max="0.001" step="0.00001"><span class="slider-value" id="l2RegularizationRateValue"></span></div>
+                    <div><label for="clipNorm">Clip Norm:</label><input type="range" id="clipNorm" min="0.1" max="5.0" step="0.1"><span class="slider-value" id="clipNormValue"></span></div>
+                    <div><label for="hiddenActivation">Hidden Activation:</label>
+                        <select id="hiddenActivation">
+                            <option value="leakyRelu">Leaky ReLU</option>
+                            <option value="relu">ReLU</option>
+                            <option value="sigmoid">Sigmoid</option>
+                            <option value="tanh">Tanh</option>
+                            <option value="linear">Linear</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="applyConfigButton">Apply Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="ppo-gui.js"></script>
+</body>
+</html>
