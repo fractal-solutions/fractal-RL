@@ -4,10 +4,14 @@ Fractal-RL is a lightweight and easy-to-use reinforcement learning library for T
 
 ## Installation
 
-To install the library, use npm:
+To install the library, use npm or bun:
 
 ```bash
 npm install fractal-rl
+```
+
+```bash
+bun add fractal-rl
 ```
 
 ## Deep Q-Network (DQN) Agent
