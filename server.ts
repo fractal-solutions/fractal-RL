@@ -11,7 +11,7 @@ serve({
 
     // If the path is a directory, try to serve index.html or ppo.html
     if ((await Bun.file(filePath).exists()) && (await Bun.file(filePath).text()).length === 0) { // Check if it's a directory
-      filePath = join(filePath, "ppo.html"); // Default to ppo.html for this specific request
+      filePath = join(filePath, "index.html"); // Default to ppo.html for this specific request
     }
 
     const file = Bun.file(filePath);

@@ -156,4 +156,4 @@ To run the PPO CartPole GUI, start the development server:
 bun run start
 ```
 
-Then, open your web browser and navigate to `http://localhost:3000/ppo.html`.
+Then, open your web browser and navigate to `http://localhost:4000/index.html`.
