@@ -2,7 +2,7 @@
 // A simple Q-network for DQN.
 // Similar to the PPO network, this is a basic implementation.
 
-import { getActivation, ActivationFunction, ActivationDerivative } from '../utils/activations.ts';
+import { getActivation, type ActivationFunction, type ActivationDerivative } from '../utils/activations';
 
 export class QNetwork {
     protected weights: number[][][]; // [layer_idx][input_node_idx][output_node_idx]
@@ -23,14 +23,16 @@ export class QNetwork {
     protected vBiases: number[][];    // Second moment estimates for biases
     protected t: number;              // Timestep for Adam
 
-    
-
     // For Dropout
-    protected dropoutMasks: boolean[][];
+    protected dropoutMasks: (boolean[] | undefined)[];
     protected dropoutRate: number;
 
     constructor(inputSize: number, outputSize: number, hiddenLayers: number[] = [64, 64], dropoutRate: number = 0.0, hiddenActivationName: string = 'leakyRelu') {
-        this.hiddenActivation = getActivation(hiddenActivationName);
+        const activation = getActivation(hiddenActivationName);
+        if (!activation) {
+            throw new Error(`Activation function '${hiddenActivationName}' not found.`);
+        }
+        this.hiddenActivation = activation;
         this.layerSizes = [inputSize, ...hiddenLayers, outputSize];
         this.weights = [];
         this.biases = [];
@@ -46,15 +48,13 @@ export class QNetwork {
         this.vBiases = [];
         this.t = 0;
 
-        
-
         // Initialize Dropout parameters
         this.dropoutMasks = [];
         this.dropoutRate = dropoutRate;
 
         for (let i = 0; i < this.layerSizes.length - 1; i++) {
-            const inputDim = this.layerSizes[i];
-            const outputDim = this.layerSizes[i + 1];
+            const inputDim = this.layerSizes[i]!;
+            const outputDim = this.layerSizes[i + 1]!;
 
             // Initialize weights (He initialization)
             const layerWeights: number[][] = Array(inputDim).fill(0).map(() =>
@@ -75,12 +75,8 @@ export class QNetwork {
             this.vWeights.push(Array(inputDim).fill(0).map(() => Array(outputDim).fill(0)));
             this.mBiases.push(Array(outputDim).fill(0));
             this.vBiases.push(Array(outputDim).fill(0));
-
-            
         }
     }
-
-    
 
     // Forward pass
     public forward(input: number[], isTraining: boolean = true): number[] {
@@ -90,19 +86,18 @@ export class QNetwork {
 
         this.activations = [];
         this.zValues = [];
-        this.normalizedZValues = []; // Reset for each forward pass
         this.dropoutMasks = []; // Reset for each forward pass
 
         let currentActivations = input;
         this.activations.push(currentActivations); // Store input activations
 
         for (let i = 0; i < this.weights.length; i++) {
-            const nextZValues: number[] = Array(this.layerSizes[i + 1]).fill(0);
+            const nextZValues: number[] = Array(this.layerSizes[i + 1]!).fill(0);
 
-            for (let j = 0; j < this.layerSizes[i + 1]; j++) {
-                let sum = this.biases[i][j];
-                for (let k = 0; k < this.layerSizes[i]; k++) {
-                    sum += currentActivations[k] * this.weights[i][k][j];
+            for (let j = 0; j < this.layerSizes[i + 1]!; j++) {
+                let sum = this.biases[i]![j]!;
+                for (let k = 0; k < this.layerSizes[i]!; k++) {
+                    sum += currentActivations[k]! * this.weights[i]![k]![j]!;
                 }
                 nextZValues[j] = sum;
             }
@@ -116,7 +111,9 @@ export class QNetwork {
                 if (isTraining && this.dropoutRate > 0) {
                     const mask: boolean[] = Array(currentActivations.length).fill(false).map(() => Math.random() > this.dropoutRate);
                     this.dropoutMasks.push(mask);
-                    currentActivations = currentActivations.map((val, idx) => mask[idx] ? val / (1 - this.dropoutRate) : 0);
+                    currentActivations = currentActivations.map((val, idx) => mask[idx]! ? val / (1 - this.dropoutRate) : 0);
+                } else {
+                    this.dropoutMasks.push(undefined); // No dropout for this layer
                 }
             } else {
                 currentActivations = nextZValues; // Output layer is linear for Q-values
@@ -127,48 +124,45 @@ export class QNetwork {
     }
 
     // Backpropagation
-    // `outputGradient` is the gradient of the loss with respect to the network's output.
     public backward(outputGradient: number[]): void {
-        this.zeroGrad(); // Reset gradients before calculating new ones
-
         let currentDelta = outputGradient;
 
         // Iterate backwards through the layers
         for (let i = this.weights.length - 1; i >= 0; i--) {
-            const currentLayerActivations = this.activations[i + 1]; // Activations of the current layer
-            const prevLayerActivations = this.activations[i];     // Activations of the previous layer (input to current layer)
-            const currentZValues = this.zValues[i];
+            const prevLayerActivations = this.activations[i]!;
+            const currentZValues = this.zValues[i]!;
 
             // Apply derivative of activation function (if not output layer)
             if (i < this.weights.length - 1) { // Hidden layer
-                // Backward pass for Dropout
-                if (this.dropoutRate > 0 && this.dropoutMasks[i]) {
-                    currentDelta = currentDelta.map((d, idx) => this.dropoutMasks[i][idx] ? d / (1 - this.dropoutRate) : 0);
+                const mask = this.dropoutMasks[i];
+                if (mask) { // Backward pass for Dropout
+                    currentDelta = currentDelta.map((d, idx) => mask[idx]! ? d / (1 - this.dropoutRate) : 0);
                 }
-
-                currentDelta = currentDelta.map((d, idx) => d * this.hiddenActivation.deriv(currentZValues[idx]));
+                currentDelta = currentDelta.map((d, idx) => d * this.hiddenActivation.deriv(currentZValues[idx]!));
             }
 
             // Calculate gradients for biases
-            for (let j = 0; j < this.biasGradients[i].length; j++) {
-                this.biasGradients[i][j] += currentDelta[j];
+            for (let j = 0; j < this.biasGradients[i]!.length; j++) {
+                this.biasGradients[i]![j]! += currentDelta[j]!;
             }
 
             // Calculate gradients for weights
-            for (let j = 0; j < this.weightGradients[i].length; j++) { // Input nodes to current layer
-                for (let k = 0; k < this.weightGradients[i][j].length; k++) { // Output nodes of current layer
-                    this.weightGradients[i][j][k] += prevLayerActivations[j] * currentDelta[k];
+            for (let j = 0; j < this.weightGradients[i]!.length; j++) { // Input nodes to current layer
+                for (let k = 0; k < this.weightGradients[i]![j]!.length; k++) { // Output nodes of current layer
+                    this.weightGradients[i]![j]![k]! += prevLayerActivations[j]! * currentDelta[k]!;
                 }
             }
 
-            // Propagate delta backwards to the previous layer
-            const nextDelta: number[] = Array(this.layerSizes[i]).fill(0);
-            for (let j = 0; j < this.layerSizes[i]; j++) { // For each node in the previous layer
-                for (let k = 0; k < this.layerSizes[i + 1]; k++) {
-                    nextDelta[j] += currentDelta[k] * this.weights[i][j][k];
+            if (i > 0) {
+                // Propagate delta backwards to the previous layer
+                const nextDelta: number[] = Array(this.layerSizes[i]!).fill(0);
+                for (let j = 0; j < this.layerSizes[i]!; j++) { // For each node in the previous layer
+                    for (let k = 0; k < this.layerSizes[i + 1]!; k++) {
+                        nextDelta[j]! += currentDelta[k]! * this.weights[i]![j]![k]!;
+                    }
                 }
+                currentDelta = nextDelta;
             }
-            currentDelta = nextDelta;
         }
     }
 
@@ -177,16 +171,15 @@ export class QNetwork {
         this.t++;
         const lr_t = learningRate * Math.sqrt(1 - Math.pow(beta2, this.t)) / (1 - Math.pow(beta1, this.t));
 
-        // Calculate total gradient norm for clipping
         let totalGradNorm = 0;
         for (let i = 0; i < this.weights.length; i++) {
-            for (let j = 0; j < this.weights[i].length; j++) {
-                for (let k = 0; k < this.weights[i][j].length; k++) {
-                    totalGradNorm += Math.pow(this.weightGradients[i][j][k], 2);
+            for (let j = 0; j < this.weights[i]!.length; j++) {
+                for (let k = 0; k < this.weights[i]![j]!.length; k++) {
+                    totalGradNorm += Math.pow(this.weightGradients[i]![j]![k]!, 2);
                 }
             }
-            for (let j = 0; j < this.biases[i].length; j++) {
-                totalGradNorm += Math.pow(this.biasGradients[i][j], 2);
+            for (let j = 0; j < this.biases[i]!.length; j++) {
+                totalGradNorm += Math.pow(this.biasGradients[i]![j]!, 2);
             }
         }
         totalGradNorm = Math.sqrt(totalGradNorm);
@@ -194,65 +187,41 @@ export class QNetwork {
         const clipFactor = totalGradNorm > clipNorm ? clipNorm / totalGradNorm : 1.0;
 
         for (let i = 0; i < this.weights.length; i++) {
-            for (let j = 0; j < this.weights[i].length; j++) {
-                for (let k = 0; k < this.weights[i][j].length; k++) {
-                    // Apply gradient clipping
-                    const clippedWeightGrad = this.weightGradients[i][j][k] * clipFactor;
+            for (let j = 0; j < this.weights[i]!.length; j++) {
+                for (let k = 0; k < this.weights[i]![j]!.length; k++) {
+                    const clippedWeightGrad = this.weightGradients[i]![j]![k]! * clipFactor;
+                    const weightDecayGrad = l2RegularizationRate * this.weights[i]![j]![k]!;
+                    
+                    this.mWeights[i]![j]![k] = beta1 * this.mWeights[i]![j]![k]! + (1 - beta1) * (clippedWeightGrad + weightDecayGrad);
+                    this.vWeights[i]![j]![k] = beta2 * this.vWeights[i]![j]![k]! + (1 - beta2) * Math.pow((clippedWeightGrad + weightDecayGrad), 2);
 
-                    // L2 Regularization (Weight Decay)
-                    const weightDecayGrad = l2RegularizationRate * this.weights[i][j][k];
+                    const mHat = this.mWeights[i]![j]![k]!;
+                    const vHat = this.vWeights[i]![j]![k]!;
 
-                    // Update biased first moment estimate
-                    this.mWeights[i][j][k] = beta1 * this.mWeights[i][j][k] + (1 - beta1) * (clippedWeightGrad + weightDecayGrad);
-                    // Update biased second moment estimate
-                    this.vWeights[i][j][k] = beta2 * this.vWeights[i][j][k] + (1 - beta2) * Math.pow((clippedWeightGrad + weightDecayGrad), 2);
-
-                    // Correct bias
-                    const mHat = this.mWeights[i][j][k];
-                    const vHat = this.vWeights[i][j][k];
-
-                    // Update weights
-                    this.weights[i][j][k] -= lr_t * mHat / (Math.sqrt(vHat) + epsilon);
+                    this.weights[i]![j]![k]! -= lr_t * mHat / (Math.sqrt(vHat) + epsilon);
                 }
             }
-            for (let j = 0; j < this.biases[i].length; j++) {
-                // Apply gradient clipping
-                const clippedBiasGrad = this.biasGradients[i][j] * clipFactor;
+            for (let j = 0; j < this.biases[i]!.length; j++) {
+                const clippedBiasGrad = this.biasGradients[i]![j]! * clipFactor;
 
-                // Update biased first moment estimate
-                this.mBiases[i][j] = beta1 * this.mBiases[i][j] + (1 - beta1) * clippedBiasGrad;
-                // Update biased second moment estimate
-                this.vBiases[i][j] = beta2 * this.vBiases[i][j] + (1 - beta2) * Math.pow(clippedBiasGrad, 2);
+                this.mBiases[i]![j] = beta1 * this.mBiases[i]![j]! + (1 - beta1) * clippedBiasGrad;
+                this.vBiases[i]![j] = beta2 * this.vBiases[i]![j]! + (1 - beta2) * Math.pow(clippedBiasGrad, 2);
 
-                // Correct bias
-                const mHat = this.mBiases[i][j];
-                const vHat = this.vBiases[i][j];
+                const mHat = this.mBiases[i]![j]!;
+                const vHat = this.vBiases[i]![j]!;
 
-                // Update biases
-                this.biases[i][j] -= lr_t * mHat / (Math.sqrt(vHat) + epsilon);
+                this.biases[i]![j]! -= lr_t * mHat / (Math.sqrt(vHat) + epsilon);
             }
         }
-
-        
     }
 
     // Reset gradients to zero
     public zeroGrad(): void {
         for (let i = 0; i < this.weightGradients.length; i++) {
-            for (let j = 0; j < this.weightGradients[i].length; j++) {
-                for (let k = 0; k < this.weightGradients[i][j].length; k++) {
-                    this.weightGradients[i][j][k] = 0;
-                    this.mWeights[i][j][k] = 0;
-                    this.vWeights[i][j][k] = 0;
-                }
+            for (let j = 0; j < this.weightGradients[i]!.length; j++) {
+                this.weightGradients[i]![j]!.fill(0);
             }
-            for (let j = 0; j < this.biasGradients[i].length; j++) {
-                this.biasGradients[i][j] = 0;
-                this.mBiases[i][j] = 0;
-                this.vBiases[i][j] = 0;
-            }
-            this.t = 0;
-            this.dropoutMasks = []; // Clear dropout masks
+            this.biasGradients[i]!.fill(0);
         }
     }
 
@@ -261,9 +230,7 @@ export class QNetwork {
         if (this.layerSizes.toString() !== otherNetwork.layerSizes.toString()) {
             throw new Error("Cannot copy parameters: network architectures do not match.");
         }
-        // Deep copy weights
         this.weights = otherNetwork.weights.map(layer => layer.map(row => [...row]));
-        // Deep copy biases
         this.biases = otherNetwork.biases.map(layer => [...layer]);
     }
 }

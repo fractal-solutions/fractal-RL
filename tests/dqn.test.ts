@@ -58,6 +58,9 @@ describe('DQNAgent', () => {
         batchSize: 32,
         targetUpdateFrequency: 10,
         replayBufferSize: 1000,
+        dropoutRate: 0.1,
+        l2RegularizationRate: 0.001,
+        clipNorm: 1.0,
     };
 
     test('should initialize DQNAgent without errors', () => {

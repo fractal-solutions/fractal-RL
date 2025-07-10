@@ -43,12 +43,19 @@ class ReplayBuffer {
         this.position = (this.position + 1) % this.capacity;
     }
 
-    public sample(batchSize: number): Experience[] {
-        const actualSize = Math.min(this.size(), this.capacity);
+    public sample(batchSize: number): Experience[] | undefined {
+        if (this.size() < batchSize) {
+            return undefined;
+        }
+
         const batch: Experience[] = [];
-        for (let i = 0; i < batchSize; i++) {
-            const randomIndex = Math.floor(Math.random() * actualSize);
-            batch.push(this.buffer[randomIndex]);
+        const indices = new Set<number>();
+        while (indices.size < batchSize) {
+            const randomIndex = Math.floor(Math.random() * this.size());
+            if (!indices.has(randomIndex)) {
+                indices.add(randomIndex);
+                batch.push(this.buffer[randomIndex]!);
+            }
         }
         return batch;
     }
@@ -94,11 +101,10 @@ export class DQNAgent {
     }
 
     public learn(): void {
-        if (this.replayBuffer.size() < this.config.batchSize) {
-            return; // Not enough experiences in buffer to learn
-        }
-
         const experiences = this.replayBuffer.sample(this.config.batchSize);
+        if (!experiences) {
+            return; // Not enough experiences to learn
+        }
 
         const states = experiences.map(exp => exp.state);
         const actions = experiences.map(exp => exp.action);
@@ -106,52 +112,39 @@ export class DQNAgent {
         const nextStates = experiences.map(exp => exp.nextState);
         const dones = experiences.map(exp => exp.done);
 
-        // Calculate Q-targets
-        const currentQValues = states.map(s => this.qNetwork.forward(s, true)); // Training mode
-        const nextQValuesTarget = nextStates.map(ns => this.targetQNetwork.forward(ns, false)); // Inference mode for target network
+        const currentQValues = states.map(s => this.qNetwork.forward(s, true));
+        const nextQValuesTarget = nextStates.map(ns => this.targetQNetwork.forward(ns, false));
 
-        const targetQValues: number[][] = currentQValues.map(arr => [...arr]); // Deep copy
-
-        for (let i = 0; i < this.config.batchSize; i++) {
-            const maxNextQ = Math.max(...nextQValuesTarget[i]);
-            const newQ = rewards[i] + this.config.gamma * maxNextQ * (dones[i] ? 0 : 1);
-            targetQValues[i][actions[i]] = newQ;
-        }
-
-        // Calculate MSE loss and backpropagate
-        let loss = 0;
-        const outputGradients: number[][] = [];
+        const targetQValues: number[][] = currentQValues.map(arr => [...arr]);
 
         for (let i = 0; i < this.config.batchSize; i++) {
-            const prediction = currentQValues[i][actions[i]];
-            const target = targetQValues[i][actions[i]];
-            loss += (prediction - target) ** 2; // MSE loss
+            const action = actions[i]!;
+            const reward = rewards[i]!;
+            const done = dones[i]!;
+            const nextQValue = nextQValuesTarget[i]!;
 
-            // Gradient of MSE w.r.t. prediction: 2 * (prediction - target)
-            const grad = Array(this.config.actionDim).fill(0);
-            grad[actions[i]] = 2 * (prediction - target);
-            outputGradients.push(grad);
+            const maxNextQ = Math.max(...nextQValue);
+            const newQ = reward + this.config.gamma * maxNextQ * (done ? 0 : 1);
+            targetQValues[i]![action] = newQ;
         }
-        loss /= this.config.batchSize; // Average loss
 
-        // Backpropagate gradients for each sample in the batch
-        // This is a simplified batch backpropagation. In a real scenario, you'd sum gradients
-        // or use a more efficient batching mechanism within the network's backward pass.
         this.qNetwork.zeroGrad();
         for (let i = 0; i < this.config.batchSize; i++) {
-            this.qNetwork.backward(outputGradients[i]);
+            const action = actions[i]!;
+            const prediction = currentQValues[i]![action]!;
+            const target = targetQValues[i]![action]!;
+            const grad = Array(this.config.actionDim).fill(0);
+            grad[action] = 2 * (prediction - target) / this.config.batchSize;
+            this.qNetwork.backward(grad);
         }
         this.qNetwork.applyGradients(this.config.learningRate, 0.9, 0.999, 1e-8, this.config.l2RegularizationRate, this.config.clipNorm);
 
         this.learnStepCounter++;
 
-        // Periodically update the target network
         if (this.learnStepCounter % this.config.targetUpdateFrequency === 0) {
-            console.log("Updating target Q-network.");
             this.updateTargetNetwork();
         }
 
-        // Decay epsilon
         this.epsilon = Math.max(this.config.epsilonEnd, this.epsilon * this.config.epsilonDecay);
     }
 }

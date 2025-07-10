@@ -7,7 +7,7 @@ class CartPoleEnvironment {
         this.steps = 0;
         this.maxSteps = 2000;
         this.poleAngleThreshold = 0.4190 * 2.5;//0.2095; // ~12 degrees
-        this.cartPositionThreshold = 4.8 * 1.5;//2.4;
+        this.cartPositionThreshold = 4.8 * 0.7;//2.4;
     }
 
     reset() {

@@ -58,6 +58,9 @@ describe('PPOAgent', () => {
         epsilon: 0.2,
         ppoEpochs: 3, // Reduced for faster test
         miniBatchSize: 64,
+        dropoutRate: 0.1,
+        l2RegularizationRate: 0.001,
+        clipNorm: 1.0,
     };
 
     test('should initialize PPOAgent without errors', () => {
