@@ -154,10 +154,6 @@ for (let episode = 0; episode < 5000; episode++) {
 
 ## PPO CartPole GUI
 
-To run the PPO CartPole GUI, start the development server:
+To run the PPO CartPole GUI, goto:
 
-```bash
-bun run start
-```
-
-Then, open your web browser and navigate to `http://localhost:4000/index.html`.
+`https://fractal-solutions.github.io/fractal-RL/`
